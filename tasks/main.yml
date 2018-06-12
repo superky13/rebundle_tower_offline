@@ -1,17 +1,27 @@
 ---
+- name: install the req packages to create a custom repo
+  yum:
+   name: "{{ item }}"
+   state: latest
+  with_items:
+  - "{{ yum_req_packages }}"
+
+#- name: mount {{ rhel_iso_name }} to {{ rhel_repo_mount_path }}
+#  mount:
+#    path: "{{ rhel_repo_mount_path }}"
+#    src: "{{ rhel_iso_path }}"
+#    fstype: iso9660
+#    opts: ro,loop
+#    state: present
+
 - name: mount {{ rhel_iso_name }} to {{ rhel_repo_mount_path }}
-  mount:
-    path: "{{ rhel_repo_mount_path }}"
-    src: "{{ rhel_iso_path }}"
-    fstype: iso9660
-    opts: ro,noauto
-    state: present
+  shell: "mount -t iso9660 -o loop {{ rhel_iso_path }} {{ rhel_repo_mount_path }}"
 
 - name: create offline repo {{ rhel_offline_repo_name }} 
   yum_repository:
     name: "{{ rhel_offline_repo_name }}"
     description: RHEL Offline Repo
-    baseurl: "file:///{{ rhel_repo_mount_path }}/"
+    baseurl: "file://{{ rhel_repo_mount_path }}/"
     enabled: yes
     gpgcheck: no
 
@@ -56,7 +66,7 @@
     block: |
       [base_packages]
       name=base_packages
-      baseurl=file://{{ bundle_install_folder }}/base_packages
+      baseurl=file://{{ base_packages_repo_dir }}
       enabled=1
       gpgcheck=0
 
@@ -65,19 +75,19 @@
     path: "{{ ansible_tower_bundle_path }}"
     dest: "/tmp/offline_{{ ansible_tower_tar_name }}"
 
+#- name: umount {{ rhel_iso_name }} to {{ rhel_repo_mount_path }}
+#  mount:
+#    path: "{{ rhel_repo_mount_path }}"
+#    src: "{{ rhel_iso_path }}"
+#    fstype: iso9660
+#    opts: ro,noauto
+#    state: absent
+
 - name: umount {{ rhel_iso_name }} to {{ rhel_repo_mount_path }}
-  mount:
-    path: "{{ rhel_repo_mount_path }}"
-    src: "{{ rhel_iso_path }}"
-    fstype: iso9660
-    opts: ro,noauto
-    state: absent
+  shell: "umount {{ rhel_repo_mount_path }}"
 
 - name: remove offline repo {{ rhel_offline_repo_name }} after new tower tarball creation
   yum_repository:
     name: "{{ rhel_offline_repo_name }}"
     description: RHEL Offline Repo
-    baseurl: "file:///{{ rhel_repo_mount_path }}/"
-    enabled: yes
-    gpgcheck: no
-    
+    state: absent
