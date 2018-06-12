@@ -1,0 +1,83 @@
+---
+- name: mount {{ rhel_iso_name }} to {{ rhel_repo_mount_path }}
+  mount:
+    path: "{{ rhel_repo_mount_path }}"
+    src: "{{ rhel_iso_path }}"
+    fstype: iso9660
+    opts: ro,noauto
+    state: present
+
+- name: create offline repo {{ rhel_offline_repo_name }} 
+  yum_repository:
+    name: "{{ rhel_offline_repo_name }}"
+    description: RHEL Offline Repo
+    baseurl: "file:///{{ rhel_repo_mount_path }}/"
+    enabled: yes
+    gpgcheck: no
+
+- name: unpack tower tarball {{ ansible_tower_tar_name }}
+  unarchive:
+    src: "{{ ansible_tower_tar_path }}"
+    dest: "{{ ansible_tower_bundle_path }}"
+    remote_src: yes 
+
+- name: create a new repo directory {{ base_packages_repo_dir }}
+  file: 
+    path: "{{ base_packages_repo_dir }}"
+    mode: 0755
+    state: directory
+
+- name: copy conversion script {{ pkg_conversion_script }} to {{ base_packages_repo_dir }}
+  copy: 
+    src: "{{ pkg_conversion_script }}"
+    dest: "{{ base_packages_repo_dir }}"
+    mode: 0755
+
+- name: install the req packages to create a custom repo
+  yum:
+   name: "{{ item }}"
+   state: latest
+  with_items:
+  - "{{ yum_req_packages }}"
+
+- name: download the packages needed for offline install based on {{ base_packages_txt }}
+  shell: yumdownloader $(python pkg_convert.py ../../base_packages.txt)
+  args:
+    chdir: "{{ base_packages_repo_dir }}"
+
+- name: create repository for later use with the bundled install
+  shell: createrepo .
+  args:
+    chdir: "{{ base_packages_repo_dir }}"
+
+- name: add the new repo to {{ ansible_tower_bundle_repo_j2 }}
+  blockinfile:
+    path: "{{ ansible_tower_bundle_repo_j2 }}"
+    block: |
+      [base_packages]
+      name=base_packages
+      baseurl=file://{{ bundle_install_folder }}/base_packages
+      enabled=1
+      gpgcheck=0
+
+- name: create a new tower tarball 
+  archive:
+    path: "{{ ansible_tower_bundle_path }}"
+    dest: "/tmp/offline_{{ ansible_tower_tar_name }}"
+
+- name: umount {{ rhel_iso_name }} to {{ rhel_repo_mount_path }}
+  mount:
+    path: "{{ rhel_repo_mount_path }}"
+    src: "{{ rhel_iso_path }}"
+    fstype: iso9660
+    opts: ro,noauto
+    state: absent
+
+- name: remove offline repo {{ rhel_offline_repo_name }} after new tower tarball creation
+  yum_repository:
+    name: "{{ rhel_offline_repo_name }}"
+    description: RHEL Offline Repo
+    baseurl: "file:///{{ rhel_repo_mount_path }}/"
+    enabled: yes
+    gpgcheck: no
+    
